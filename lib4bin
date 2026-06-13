@@ -13,26 +13,18 @@ GREEN='\033[1;92m'
 YELLOW='\033[1;33m'
 RESETCOLOR='\033[1;00m'
 
-ONE_DIR=${ONE_DIR:=1}
 DST_DIR="${DST_DIR:=.}"
 TMPDIR="${TMPDIR:=/tmp}"
 CREATE_LINKS=${CREATE_LINKS:=1}
 
-[[ -z "$PYINSTALL_DIR" && -d "$HOME/.local/share/uv/python" ]] && \
-PYINSTALL_DIR="$HOME/.local/share/uv/python"
-PYINSTALL_DIR="${PYINSTALL_DIR:=$TMPDIR/pyinstall}"
-
 ARCH="$(uname -m)"
 GIT_SHARUN_RELEASE="https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-${ARCH}"
 GIT_WRAPPE_RELEASE="https://github.com/VHSgunzo/wrappe/releases/latest/download/wrappe-${ARCH}"
-GIT_UV_RELEASE="https://github.com/astral-sh/uv/releases/latest/download/uv-${ARCH}-unknown-linux-musl.tar.gz"
 
-STRIP=${STRIP:=0}
 VERBOSE=${VERBOSE:=0}
 LIBS_ONLY=${LIBS_ONLY:=0}
 QUIET_MODE=${QUIET_MODE:=0}
 HARD_LINKS=${HARD_LINKS:=0}
-WITH_HOOKS=${WITH_HOOKS:=0}
 WITH_SHARUN=${WITH_SHARUN:=0}
 WITH_WRAPPE=${WITH_WRAPPE:=0}
 WRAPPE_CLVL=${WRAPPE_CLVL:=8}
@@ -42,60 +34,6 @@ STRACE_TIME=${STRACE_TIME:=5}
 GEN_LIB_PATH=${GEN_LIB_PATH:=1}
 ANY_EXECUTABLE=${ANY_EXECUTABLE:=0}
 WRAPPE_CLEANUP=${WRAPPE_CLEANUP:=1}
-MAX_INTERP_LEN=${MAX_INTERP_LEN:=256}
-PATCH_INTERPRETER=${PATCH_INTERPRETER:=0}
-
-XDG_OPEN_WRAPPER='#!/bin/sh
-# xdg-open and gio-launch-desktop wrapper for sharun
-# unsets env variables that cause issues to child processes
-
-CURRENTDIR="$(cd "${0%/*}" && echo "$PWD")"
-APPDIR="${APPDIR:-${SHARUN_DIR:-${CURRENTDIR%/*}}}"
-
-NEWPATH=""
-OLDIFS="$IFS"
-IFS=:
-for p in $PATH; do
-	if [ "$p" != "$CURRENTDIR" ]; then
-		NEWPATH="${NEWPATH:+$NEWPATH:}$p"
-	fi
-done
-PATH="$NEWPATH"
-IFS="$OLDIFS"
-export PATH
-
-problematic_vars="ALSA_CONFIG_PATH BABL_PATH DRIRC_CONFIGDIR __EGL_VENDOR_LIBRARY_DIRS \
-	GBM_BACKENDS_PATH GCONV_PATH GDK_PIXBUF_MODULEDIR GDK_PIXBUF_MODULE_FILE GEGL_PATH \
-	GIO_MODULE_DIR GI_TYPELIB_PATH GSETTINGS_SCHEMA_DIR GST_PLUGIN_PATH GST_PLUGIN_SCANNER \
-	GST_PLUGIN_SYSTEM_PATH GST_PLUGIN_SYSTEM_PATH_1_0 GTK_DATA_PREFIX GTK_EXE_PREFIX \
-	GTK_IM_MODULE_FILE GTK_PATH LIBDECOR_PLUGIN_DIR LIBGL_DRIVERS_PATH LIBVA_DRIVERS_PATH PERLLIB \
-	PIPEWIRE_MODULE_DIR QT_PLUGIN_PATH SPA_PLUGIN_DIR TCL_LIBRARY TEXTDOMAINDIR TK_LIBRARY \
-	XKB_CONFIG_ROOT XLOCALEDIR XTABLES_LIBDIR IMLIB2_LOADER_PATH IMLIB2_FILTER_PATH"
-
-for var in $problematic_vars; do
-	eval "value=\"\$$var\""
-	case "$value" in
-		"$APPDIR"/*)
-			unset "$var"
-			echo "unset $var to prevent issues" >&2
-			;;
-		*) continue ;;
-	esac
-done
-
-# Restore HOME, XDG_CONFIG_HOME and XDG_DATA_HOME to their original values
-# NOTE: The REAL_* vars are set by the uruntime
-export HOME="${REAL_HOME:-$HOME}"
-export XDG_DATA_HOME="${REAL_XDG_DATA_HOME:-$XDG_DATA_HOME}"
-export XDG_CONFIG_HOME="${REAL_XDG_CONFIG_HOME:-$XDG_CONFIG_HOME}"
-export XDG_CACHE_HOME="${REAL_XDG_CACHE_HOME:-$XDG_CACHE_HOME}"
-
-if [ "${0##*/}" = "gio-launch-desktop" ]; then
-	export GIO_LAUNCHED_DESKTOP_FILE_PID=$$
-	exec "$@"
-else
-	exec xdg-open "$@"
-fi'
 
 usage() {
     echo -e "[ Usage ]: lib4bin [OPTIONS] /path/executable -- [STRACE MODE EXEC ARGS]
@@ -106,14 +44,10 @@ usage() {
     -t, --strace-time 5      Specify the time in seconds for strace mode (env: STRACE_TIME=5)
     -g, --gen-lib-path       Generate a lib.path file (env: GEN_LIB_PATH=1) (default)
     -h, --help               Show this message
-    -i, --patch-interpreter  Patch INTERPRETER to a relative path (env: PATCH_INTERPRETER=1)
-    -k, --with-hooks         Pack additional files required for libraries (env: WITH_HOOKS=1)
     -l, --libs-only          Pack only libraries without executables (env: LIBS_ONLY=1)
-    -n, --not-one-dir        Separate directories for each executable (env: ONE_DIR=0)
     -p, --hard-links         Pack sharun and create hard links (env: HARD_LINKS=1)
     -q, --quiet-mode         Show only errors (env: QUIET_MODE=1)
     -r, --patch-rpath        Patch RPATH to a relative path (env: PATCH_RPATH=1)
-    -s, --strip              Strip binaries and libraries (env: STRIP=1)
     -v, --verbose            Verbose mode (env: VERBOSE=1)
     -w, --with-sharun        Pack sharun from PATH or env or download
                                 (env: WITH_SHARUN=1, SHARUN=/path|URL, SHARUN_URL=URL, UPX_SHARUN=1)
@@ -124,33 +58,24 @@ usage() {
     -m, --wrappe-args 'args' Specify the args for the wrappe packaged executable (env: WRAPPE_ARGS='args')
     -z, --wrappe-dir '/path' Specify path to the sharun dir for packing with wrappe (env: WRAPPE_DIR='/path')
     -u, --wrappe-no-cleanup  Disable cleanup the wrappe unpack directory after exit (env: WRAPPE_CLEANUP=0)
-                                It can also be set at runtime (env: STARTPE_CLEANUP=0)
-    -y, --with-python        Pack python using uv from PATH or env or download
-                                (env: WITH_PYTHON=1, UV=/path|URL, UV_URL=URL)
-    -pp, --python-pkg 'pkg'  Specify the python package or '/path/requirements.txt' (env: PYTHON_PKG='pkg')
-    -pv, --python-ver 3.12   Specify the python version for packing (env: PYTHON_VER=3.12)
-    -pi, --python-pip        Leave pip after install python package (env: PYTHON_LEAVE_PIP=1)
-    -pw, --python-wheel      Leave wheel after install python package (env: PYTHON_LEAVE_WHEEL=1)
-    -ps, --python-setuptools Leave setuptools after install python package (env: PYTHON_LEAVE_SETUPTOOLS=1)"
+                                It can also be set at runtime (env: STARTPE_CLEANUP=0)"
     exit 1
 }
 
 error_msg() {
-    echo -e "${RED}[ ERROR ][$(date +"%Y.%m.%d %T")]: $@ $RESETCOLOR" 1>&2
+    echo -e "${RED}[ ERROR ]: $@ $RESETCOLOR" 1>&2
     return 1
 }
 
 info_msg() {
     if [ "$QUIET_MODE" != 1 ]
-        then echo -e "${GREEN}[ INFO ][$(date +"%Y.%m.%d %T")]: $@ $RESETCOLOR" 1>&2
+        then echo -e "${GREEN}[ INFO ]: $@ $RESETCOLOR" 1>&2
     fi
 }
 
-hook_msg() { info_msg "$YELLOW[ HOOK ]:$GREEN $@" ; }
-
 skip_msg() {
     if [ "$QUIET_MODE" != 1 ]
-        then echo -e "${YELLOW}[ SKIPPED ][$(date +"%Y.%m.%d %T")]: $@ $RESETCOLOR" 1>&2
+        then echo -e "${YELLOW}[ SKIPPED ]: $@ $RESETCOLOR" 1>&2
     fi
 }
 
@@ -161,7 +86,6 @@ is_exe_exist() { which_exe "$@" &>/dev/null ; }
 check_deps() {
     local ret=0
     local binaries=(file patchelf find grep sed)
-    [ "$STRIP" != 1 ]||binaries+=(strip)
     [ "$STRACE_MODE" != 1 ]||binaries+=(strace)
     for bin in "${binaries[@]}"
         do
@@ -175,15 +99,6 @@ check_deps() {
         then
             info_msg "You need to install ${BLUE}lib4bin${GREEN} dependencies: ${BLUE}file binutils patchelf findutils grep sed coreutils strace"
             exit 1
-    fi
-}
-
-try_strip() {
-    if [[ "$STRIP" == 1 && ! "$FILE_INFO" =~ 'no section header' ]] \
-    && [[ "$1" != */python3.1[2-9] ]]  ## FIXME a strange python 3.12+ bug: symbol lookup error: python: undefined symbol: , version
-        then
-            info_msg "$YELLOW[ STRIP ]: $BLUE[$1]"
-            strip -s -R .comment --strip-unneeded "$1"
     fi
 }
 
@@ -209,8 +124,6 @@ try_set_rpath() {
     patchelf $pvarg --set-rpath "$rpath" --force-rpath "$1"||exit 1
     patchelf $pvarg --no-default-lib "$1"||exit 1
 }
-
-get_md5sum() { md5sum<<<"$1"|awk '{print$1}'; }
 
 print_needed() { patchelf --print-needed "$1" 2>/dev/null ; }
 
@@ -387,15 +300,6 @@ is_url() {
     fi
 }
 
-find_py_unneeded() {
-    OLD_IFS="$IFS"
-    IFS=$'\n'
-    PY_UNNEEDED_LIST=($(find "$1" -type f -iname '*.cmd' \
-        -o -iname '*.md' -o -name 'LICENSE*' -o -iname '*.ps1' \
-        -o -iname '*.bat' -o -iname '*.exe' -o -iname '*.whl'))
-    IFS="$OLD_IFS"
-}
-
 is_net_conn() {
     if is_exe_exist nc
         then nc -zw1 github.com 443 &>/dev/null
@@ -476,27 +380,17 @@ parse_arg_options() {
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -h|--help) usage ;;
-        -s|--strip) STRIP=1; shift ;;
         -v|--verbose) VERBOSE=1; shift ;;
-        -n|--not-one-dir) ONE_DIR=0; shift ;;
         -l|--libs-only) LIBS_ONLY=1; shift ;;
-        -k|--with-hooks) WITH_HOOKS=1; shift ;;
         -q|--quiet-mode) QUIET_MODE=1; shift ;;
         -p|--hard-links) HARD_LINKS=1; shift ;;
         -e|--strace-mode) STRACE_MODE=1; shift ;;
         -w|--with-sharun) WITH_SHARUN=1; shift ;;
         -o|--with-wrappe) WITH_WRAPPE=1; shift ;;
-        -y|--with-python) WITH_PYTHON=1; shift ;;
         -r|--patch-rpath) PATCH_RPATH=1; shift ;;
-        -pi|--python-pip) PYTHON_LEAVE_PIP=1; shift ;;
-        -pw|--python-wheel) PYTHON_LEAVE_WHEEL=1; shift ;;
-        -ps|--python-setuptools) PYTHON_LEAVE_SETUPTOOLS=1; shift ;;
         -g|--gen-lib-path) GEN_LIB_PATH=1; shift ;;
         -u|--wrappe-no-cleanup) WRAPPE_CLEANUP=0; shift ;;
-        -i|--patch-interpreter) PATCH_INTERPRETER=1; shift ;;
         -d|--dst-dir) parse_arg_options DST_DIR "$1" "$2"; shift 2 ;;
-        -pv|--python-ver) parse_arg_options PYTHON_VER "$1" "$2"; shift 2 ;;
-        -pp|--python-pkg) parse_arg_options PYTHON_PKG "$1" "$2"; shift 2 ;;
         -t|--strace-time) parse_arg_options STRACE_TIME "$1" "$2"; shift 2 ;;
         -x|--wrappe-exec) parse_arg_options WRAPPE_EXEC "$1" "$2"; shift 2 ;;
         -c|--wrappe-clvl) parse_arg_options WRAPPE_CLVL "$1" "$2"; shift 2 ;;
@@ -531,47 +425,12 @@ WRAPPE_DIR="$(readlink -f "$WRAPPE_DIR")"
 [ "$WITH_WRAPPE" == 1 ] && \
     WITH_SHARUN=1 GEN_LIB_PATH=1
 
-[[ -n "$PYTHON_PKG" ]] && WITH_PYTHON=1
-[[ "$PYTHON_VER" =~ ^[0-9]+\.[0-9]+$ ]] && \
-    WITH_PYTHON=1||unset PYTHON_VER
-
-if [ "$WITH_PYTHON" == 1 ]
-    then
-        ONE_DIR=1
-        WITH_SHARUN=1
-        TMP_UV="${TMPDIR}/uv-${ARCH}-unknown-linux-musl/uv"
-        UV="${UV:="$(readlink -f "$(which_exe uv)")"}"
-        UV="${UV:="$TMP_UV"}"
-        if [ ! -x "$UV" ]
-            then
-                if [[ "${UV,,}" =~ ^http ]]
-                    then
-                        UV_URL="$UV"
-                        UV="$TMP_UV"
-                fi
-                UV_URL="${UV_URL:=$GIT_UV_RELEASE}"
-                info_msg "Downloading uv -> '$UV'..."
-                info_msg "$UV_URL"
-                if NO_ARIA2C=1 try_dl "$UV_URL" '/dev/stdout'|tar -zxvf- -C "$TMPDIR"
-                    then chmod $varg +x "$UV"
-                    else
-                        error_msg "Failed to download uv!"
-                        exit 1
-                fi
-        fi
-        if [ ! -x "$UV" ]
-            then
-                error_msg "uv not found!"
-                exit 1
-        fi
-fi
-
 BINARY_LIST=()
 unset STRACE_EXE
 declare -A DST_DIRS
 [ -n "$DST_DIR" ] && \
 DST_DIR="$(readlink -f "$DST_DIR")"
-if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
+if [[ ! -d "$WRAPPE_DIR" ]]
     then
         if [ "$2" == '--' ]
             then
@@ -581,77 +440,6 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
         fi
 
         check_deps
-
-        if [ "$WITH_PYTHON" == 1 ]
-            then
-                PYTMP_DIR="$DST_DIR/pytmp-$$"
-                info_msg "$YELLOW[ PYTHON INSTALL ]: $BLUE[$PYINSTALL_DIR] ${GREEN}..."
-                "$UV" python install --install-dir "$PYINSTALL_DIR" $PYTHON_VER||exit 1
-                CPYTHON_VER="$(ls -r1 "$PYINSTALL_DIR"|grep -m1 "cpython-${PYTHON_VER}.*-linux-${ARCH}.*")"
-                CPYTHON_DIR="$PYINSTALL_DIR/$CPYTHON_VER"
-                if [[ -n "$CPYTHON_VER" && -d "$CPYTHON_DIR" ]]
-                    then
-                        info_msg "$YELLOW[ PYTHON VERSION ]: $BLUE[$CPYTHON_VER]"
-                        try_mkdir "$PYTMP_DIR"
-                        try_cp -T "$PYINSTALL_DIR/$CPYTHON_VER" "$PYTMP_DIR"
-                        find_py_unneeded "$PYTMP_DIR/"
-                        rm -rf "$PYTMP_DIR"/{.lock,share} "$PYTMP_DIR/lib"/!(pkgconfig|*python*) "${PY_UNNEEDED_LIST[@]}"
-                        if [ -n "$PYTHON_PKG" ]
-                            then
-                                PYTHON_PKGS=(pip setuptools wheel)
-                                info_msg "$YELLOW[ PIP INSTALL ]: $BLUE[$PYTHON_PKG -> $PYTMP_DIR] ${GREEN}..."
-                                PYTHON_PKG_NAME="$(basename "$PYTHON_PKG")"
-                                [[ -f "$PYTHON_PKG" && "${PYTHON_PKG_NAME,,}" == 'requirements.txt' ]] && \
-                                    PYTHON_PKGS+=(-r "$PYTHON_PKG")||PYTHON_PKGS+=("$PYTHON_PKG")
-                                "$UV" pip install --prefix "$PYTMP_DIR" --compile-bytecode --refresh --upgrade \
-                                    --python "$PYTMP_DIR/bin/python" --link-mode=copy --prerelease=allow \
-                                    "${PYTHON_PKGS[@]}"||exit 1
-                                find_py_unneeded "$PYTMP_DIR/"
-                                PY_UNINSTALL_LIST=()
-                                if [ "$PYTHON_LEAVE_PIP" != 1 ]
-                                    then
-                                        PY_UNINSTALL_LIST+=(pip)
-                                        PY_UNNEEDED_LIST+=(
-                                            "$PYTMP_DIR/lib/pkgconfig"
-                                            "$PYTMP_DIR"/{.lock,include}
-                                            "$PYTMP_DIR"/lib/python*/ensurepip
-                                            "$PYTMP_DIR/bin"/{pip,python*-config}*
-                                            "$PYTMP_DIR/lib"/python*/config-*-linux*
-                                            "$PYTMP_DIR"/lib/python*/site-packages/{pip,pip-*}
-                                        )
-
-                                fi
-                                [ "$PYTHON_LEAVE_WHEEL" == 1 ]||PY_UNINSTALL_LIST+=(wheel)
-                                [ "$PYTHON_LEAVE_SETUPTOOLS" == 1 ]||PY_UNINSTALL_LIST+=(setuptools)
-                                if [ -n "$PY_UNINSTALL_LIST" ]
-                                    then
-                                        "$UV" pip uninstall --prefix "$PYTMP_DIR" --python "$PYTMP_DIR/bin/python" \
-                                            "${PY_UNINSTALL_LIST[@]}"||exit 1
-                                fi
-                                rm -rf "$PYTMP_DIR/share/man" "${PY_UNNEEDED_LIST[@]}"
-                        fi
-                    else
-                        error_msg "python $CPYTHON_VER not found!"
-                        exit 1
-                fi
-                unset PY_UNNEEDED_LIST
-                [ "$WITH_WRAPPE" == 1 ] && \
-                dst_dir="$DST_DIR/wrappe-$$"||\
-                dst_dir="$DST_DIR"
-                try_mkdir "$dst_dir"
-                try_cp -T "$PYTMP_DIR" "$dst_dir"
-                rm -rf "$PYTMP_DIR"
-                OLD_IFS="$IFS"
-                IFS=$'\n'
-                for script in $(grep -m1 "^'''exec.*python" -lr "$dst_dir/bin")
-                    do sed -i '1s|.*|#!/usr/bin/env python|;2,3d' "$script"
-                done
-                BINARY_LIST+=(
-                    $(find_exe "$dst_dir/bin/")
-                    #$(find_so "$dst_dir")
-                )
-                IFS="$OLD_IFS"
-        fi
 
         if [ -n "$STRACE_EXE" ]
             then BINARY_LIST+=("$STRACE_EXE")
@@ -676,7 +464,7 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
         declare -A LIBRARIES
         for binary in "${BINARY_LIST[@]}"
             do
-                unset binary_real_name IS_PYINSTELF
+                unset binary_real_name
                 if [ -L "$binary" ]
                     then
                         binary_src_pth="$(readlink -f "$binary")"
@@ -688,18 +476,9 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
                     then
                         binary_name="$(basename "$binary")"
                         binary_readlink_name="$(basename "$(readlink "$binary")")"
-                        if [ "$WITH_PYTHON" != 1 ]
-                            then
-                                if [ "$ONE_DIR" == 1 ]
-                                    then
-                                        [ "$WITH_WRAPPE" == 1 ] && \
-                                        dst_dir="$DST_DIR/wrappe-$$"||\
-                                        dst_dir="$DST_DIR"
-                                    else
-                                        [ "$WITH_WRAPPE" == 1 ] && \
-                                        dst_dir="$DST_DIR/${binary_name}/wrappe-$$"||\
-                                        dst_dir="$DST_DIR/${binary_name}"
-                                fi
+                        if [ "$WITH_WRAPPE" == 1 ]
+                            then dst_dir="$DST_DIR/wrappe-$$"
+                            else dst_dir="$DST_DIR"
                         fi
                         if [ "$binary" == 'sharun' ]
                             then binary_src_pth="$dst_dir/sharun"
@@ -728,7 +507,6 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
                         hard_links=${HARD_LINKS:=0}
                         with_sharun=${WITH_SHARUN:=0}
                         create_links=${CREATE_LINKS:=1}
-                        patch_interpreter=${PATCH_INTERPRETER:=0}
                         if ([ -n "$IS_EXECUTABLE" ] || is_so)
                             then
                                 needed_libs="$(print_needed "$binary_src_pth")"
@@ -797,28 +575,10 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
                                                 fi
                                                 if [[ "${BINARIES["$binary_dst_pth"]}" != 1 ]]
                                                     then
-                                                        if [ -n "$IS_ELF" ]
-                                                            then try_strip "$binary_dst_pth"
-                                                        fi
                                                         if [[ -n "$LIBS" && -z "$IS_SCRIPT" && -z "$IS_STATIC" ]]
                                                             then
                                                                 repath_needed_libs "$binary_dst_pth" "$needed_libs"
                                                                 try_remove_fullrpath "$binary_dst_pth"
-                                                                IS_PYINSTELF="$(grep -aom1 'PyInstaller' "$binary_src_pth")"
-                                                                if [ -n "$IS_PYINSTELF" ]
-                                                                    then
-                                                                        pyinternal_dir="$(readlink -f "$(dirname "$binary_src_pth")/_internal")"
-                                                                        if [ -d "$pyinternal_dir" ]
-                                                                            then
-                                                                                rm -rf "$bin_dir_pth/_internal"
-                                                                                try_cp -T "$pyinternal_dir" "$bin_dir_pth/_internal"
-                                                                                if [ "$dst_dir" == "$(dirname "$pyinternal_dir")" ]
-                                                                                    then rm -rf "$pyinternal_dir" "$binary_src_pth"
-                                                                                fi
-                                                                            else patch_interpreter=1
-                                                                        fi
-                                                                        export PATCH_RPATH_$(get_md5sum "${dst_dir_pth}")=1
-                                                                fi
                                                         fi
                                                         BINARIES["$binary_dst_pth"]=1
                                                 fi
@@ -879,13 +639,6 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
                                                                 try_ln ../$lib_dir $lib_dir)||exit 1
                                                         fi
                                                         try_mkdir "$lib_dst_dir_pth"
-                                                        if [[ -d "$bin_dir_pth/_internal" && ! -L "$bin_dir_pth/_internal" ]]
-                                                            then
-                                                                try_cp -nT "$bin_dir_pth/_internal" "$(readlink -f "${dst_dir_pth}/${lib_dir}")"
-                                                                rm -rf "$bin_dir_pth/_internal"
-                                                                (try_cd "$bin_dir_pth"
-                                                                try_ln ../${lib_dir} _internal)||exit 1
-                                                        fi
                                                         try_cp_exe "$lib_src_pth" "$lib_dst_pth"
                                                         if [[ -n "$lib_src_real_name" && "$lib_src_name" != "$lib_src_real_name" ]]
                                                             then
@@ -912,315 +665,7 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
                                                                         try_ln shared/$lib_dir $lib_dir)||exit 1
                                                                 fi
                                                                 repath_needed_libs "$lib_dst_pth"
-                                                                try_strip "$lib_dst_pth"
                                                                 try_remove_fullrpath "$lib_dst_pth"
-                                                                if [ "$WITH_HOOKS" == 1 ]
-                                                                    then
-                                                                        if [ ! -f "$dst_dir/bin/xdg-open" ]
-                                                                            then
-                                                                                hook_msg "adding xdg-open wrapper..."
-                                                                                try_mkdir "$dst_dir/bin"
-                                                                                echo "$XDG_OPEN_WRAPPER" > "$dst_dir/bin/xdg-open"
-                                                                                chmod $varg +x "$dst_dir/bin/xdg-open"
-                                                                        fi
-                                                                        case "$lib_dst_pth" in
-                                                                            */gio/modules/*.so)
-                                                                                sys_giom_cache="${lib_src_pth/modules\/*\.so/modules\/giomodule.cache}"
-                                                                                dst_giom_dir="$(dirname "$lib_dst_pth")"
-                                                                                dst_giom_cache="$dst_giom_dir/giomodule.cache"
-                                                                                if [[ -f "$sys_giom_cache" &&  ! -f "$dst_giom_cache" ]]
-                                                                                    then
-                                                                                        hook_msg "copy giomodule.cache..."
-                                                                                        try_mkdir "$dst_giom_dir"
-                                                                                        try_cp "$sys_giom_cache" "$dst_giom_cache"
-                                                                                fi ;;
-                                                                            */libgio-*.so*)
-                                                                                if [ ! -f "$dst_dir/bin/gio-launch-desktop" ]
-                                                                                    then
-                                                                                    hook_msg "make gio-launch-desktop wrapper..."
-                                                                                    try_ln 'xdg-open' "$dst_dir/bin/gio-launch-desktop"
-                                                                                fi ;;
-                                                                            */libglib-*.so*)
-                                                                                glib="$(grep -o 'glib-.*\.so'<<<"$lib_src_name"|sed "s|\.so$||")"
-                                                                                sys_glib_schemas="/usr/share/$glib/schemas"
-                                                                                dst_glib_schemas="$dst_dir/share/$glib/schemas"
-                                                                                if [[ -d "$sys_glib_schemas" && ! -d "$dst_glib_schemas" ]]
-                                                                                    then
-                                                                                        hook_msg "copy glib schemas..."
-                                                                                        try_mkdir "$dst_glib_schemas"
-                                                                                        try_cp -T "$sys_glib_schemas" "$dst_glib_schemas"
-                                                                                fi ;;
-                                                                            */gdk-pixbuf-*/*/loaders/*.so)
-                                                                                sys_pixbufl_cache="${lib_src_pth/loaders\/*\.so/loaders.cache}"
-                                                                                dst_pixbufl_dir="$(dirname "$lib_dst_pth")"
-                                                                                dst_pixbufl_cache="${dst_pixbufl_dir}.cache"
-                                                                                if [[ -f "$sys_pixbufl_cache" && ! -f "$dst_pixbufl_cache" ]]
-                                                                                    then
-                                                                                        hook_msg "copy gdk pixbuf loaders.cache..."
-                                                                                        try_mkdir "$dst_pixbufl_dir"
-                                                                                        try_cp "$sys_pixbufl_cache" "$dst_pixbufl_cache"
-                                                                                        sed -i 's|/usr/lib/.*/loaders/||g' "$dst_pixbufl_cache"
-                                                                                fi
-                                                                                sys_mime_dir='/usr/share/mime'
-                                                                                dst_mime_dir="$dst_dir/share/mime"
-                                                                                if [[ -d "$sys_mime_dir" && ! -d "$dst_mime_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy mime database..."
-                                                                                        try_mkdir "$dst_mime_dir"
-                                                                                        try_cp -T "$sys_mime_dir" "$dst_mime_dir"
-                                                                                        rm -rf "$dst_mime_dir"/packages
-                                                                                fi ;;
-                                                                            */gtk-*/*/immodules/*.so)
-                                                                                sys_gtkimm_cache="${lib_src_pth/immodules\/*\.so/immodules.cache}"
-                                                                                dst_gtkimm_dir="$(dirname "$lib_dst_pth")"
-                                                                                dst_gtkimm_cache="${dst_gtkimm_dir}.cache"
-                                                                                if [[ -f "$sys_gtkimm_cache" && ! -f "$dst_gtkimm_cache" ]]
-                                                                                    then
-                                                                                        hook_msg "copy gtk immodules.cache..."
-                                                                                        try_mkdir "$dst_gtkimm_dir"
-                                                                                        try_cp "$sys_gtkimm_cache" "$dst_gtkimm_cache"
-                                                                                        sed -i 's|/usr/lib/.*/immodules/||g' "$dst_gtkimm_cache"
-                                                                                fi ;;
-                                                                            *libglycin*.so*)
-                                                                                sys_glycin_conf_dir='/usr/share/glycin-loaders'
-                                                                                dst_glycin_conf_dir="$dst_dir/share/glycin-loaders"
-                                                                                if [[ -d "$sys_glycin_conf_dir" && ! -d "$dst_glycin_conf_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy glycin-loaders config..."
-                                                                                        try_mkdir "$dst_glycin_conf_dir"
-                                                                                        try_cp -T "$sys_glycin_conf_dir" "$dst_glycin_conf_dir"
-                                                                                        sed -i 's|/usr/lib.*/||g' "$dst_glycin_conf_dir"/*/*/*.conf
-                                                                                fi ;;
-                                                                            *libgtksourceview-*.so*)
-                                                                                sys_sourceview_dir="/usr/share/$(grep -o 'gtksourceview-.*\.so'<<<"$lib_dst_pth"|sed "s|\.so$||")"
-                                                                                dst_sourceview_dir="$dst_dir/share/${sys_sourceview_dir##*/}"
-                                                                                if [[ -d "$sys_sourceview_dir" && ! -d "$dst_sourceview_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy ${sys_sourceview_dir##*/} data files..."
-                                                                                        try_mkdir "$dst_sourceview_dir"
-                                                                                        try_cp -T "$sys_sourceview_dir" "$dst_sourceview_dir"
-                                                                                fi ;;
-                                                                            */libfontconfig.so*)
-                                                                                sys_fcfg='/etc/fonts/fonts.conf'
-                                                                                dst_fcfg="$dst_dir/etc/fonts/fonts.conf"
-                                                                                if [[ -f "$sys_fcfg" && ! -f "$dst_fcfg" ]]
-                                                                                    then
-                                                                                        hook_msg "copy fonts.conf..."
-                                                                                        try_mkdir "$dst_dir/etc/fonts"
-                                                                                        try_cp "$sys_fcfg" "$dst_fcfg"
-                                                                                fi ;;
-                                                                            */libfolks*.so*)
-                                                                                sys_folks_dir="$(dirname "$lib_src_pth")/folks"
-                                                                                dst_folks_dir="$(dirname "$lib_dst_pth")/folks"
-                                                                                if [[ -d "$sys_folks_dir" && ! -d "$dst_folks_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy folks lib dir..."
-                                                                                        try_cp -T "$sys_folks_dir" "$dst_folks_dir"
-                                                                                fi ;;
-                                                                            */libthai*.so*)
-                                                                                sys_libthai_dir='/usr/share/libthai'
-                                                                                dst_libthai_dir="$dst_dir/share/libthai"
-                                                                                if [[ -d "$sys_libthai_dir" && ! -d "$dst_libthai_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy libthai..."
-                                                                                        try_mkdir "$dst_libthai_dir"
-                                                                                        try_cp -T "$sys_libthai_dir" "$dst_libthai_dir"
-                                                                                fi ;;
-                                                                            */libasound.so*)
-                                                                                sys_alsaconf_dir='/usr/share/alsa'
-                                                                                dst_alsaconf_dir="$dst_dir/share/alsa"
-                                                                                if [[ -d "$sys_alsaconf_dir" && ! -d "$dst_alsaconf_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy alsa config..."
-                                                                                        try_mkdir "$dst_alsaconf_dir"
-                                                                                        try_cp -T "$sys_alsaconf_dir" "$dst_alsaconf_dir"
-                                                                                fi ;;
-                                                                            */libxkbcommon*.so*)
-                                                                                sys_xcb_dir="$(readlink -f /usr/share/X11/xkb)"
-                                                                                dst_xcb_dir="$dst_dir/share/X11/xkb"
-                                                                                if [[ -d "$sys_xcb_dir" && ! -d "$dst_xcb_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy X11 xkb..."
-                                                                                        try_mkdir "$dst_xcb_dir"
-                                                                                        try_cp -T "$sys_xcb_dir" "$dst_xcb_dir"
-                                                                                fi
-                                                                                sys_xlocale_dir="$(readlink -f /usr/share/X11/locale)"
-                                                                                dst_xlocale_dir="$dst_dir/share/X11/locale"
-                                                                                if [[ -d "$sys_xlocale_dir" && ! -d "$dst_xlocale_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy X11 locale..."
-                                                                                        try_mkdir "$dst_xlocale_dir"
-                                                                                        try_cp -T "$sys_xlocale_dir" "$dst_xlocale_dir"
-                                                                                fi ;;
-                                                                            */libgbm.so*)
-                                                                                sys_gbm_dir="$(dirname "$lib_src_pth")/gbm"
-                                                                                dst_gbm_dir="$(dirname "$lib_dst_pth")/gbm"
-                                                                                if [[ -d "$sys_gbm_dir" && ! -d "$dst_gbm_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy gbm lib dir..."
-                                                                                        try_cp -T "$sys_gbm_dir" "$dst_gbm_dir"
-                                                                                fi ;;
-                                                                            */libEGL_mesa.so*)
-                                                                                sys_glvnd_dir='/usr/share/glvnd/egl_vendor.d'
-                                                                                dst_glvnd_dir="$dst_dir/share/glvnd/egl_vendor.d"
-                                                                                if [[ -d "$sys_glvnd_dir" && ! -d "$dst_glvnd_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy EGL vendors..."
-                                                                                        try_mkdir "$dst_glvnd_dir"
-                                                                                        try_cp -T "$sys_glvnd_dir" "$dst_glvnd_dir"
-                                                                                fi
-                                                                                sys_drirc_dir='/usr/share/drirc.d'
-                                                                                dst_drirc_dir="$dst_dir/share/drirc.d"
-                                                                                if [[ -d "$sys_drirc_dir" && ! -d "$dst_drirc_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy dri config dir..."
-                                                                                        try_mkdir "$dst_drirc_dir"
-                                                                                        try_cp -T "$sys_drirc_dir" "$dst_drirc_dir"
-                                                                                fi ;;
-                                                                            */libvulkan.so*)
-                                                                                sys_vk_icd_dir='/usr/share/vulkan/icd.d'
-                                                                                dst_vk_icd_dir="$dst_dir/share/vulkan/icd.d"
-                                                                                if [[ -d "$sys_vk_icd_dir" && ! -d "$dst_vk_icd_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy Vulkan ICD..."
-                                                                                        try_mkdir "$dst_vk_icd_dir"
-                                                                                        try_cp -T "$sys_vk_icd_dir" "$dst_vk_icd_dir"
-                                                                                        sed -i 's|/usr/lib||g;s|/.*-linux-gnu||g;s|"/|"|g' "$dst_vk_icd_dir"/*
-                                                                                fi ;;
-                                                                            */libdrm_amdgpu.so*)
-                                                                                sys_libdrm_dir='/usr/share/libdrm'
-                                                                                dst_libdrm_dir="$dst_dir/share/libdrm"
-                                                                                if [[ -d "$sys_libdrm_dir" && ! -d "$dst_libdrm_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy libdrm amdgpu.ids dir..."
-                                                                                        try_mkdir "$dst_libdrm_dir"
-                                                                                        try_cp -T "$sys_libdrm_dir" "$dst_libdrm_dir"
-                                                                                fi ;;
-                                                                            */libwebkit*gtk-*.so*)
-                                                                                webkit="$(grep -Eo 'webkit(2)?gtk-[0-9]*\.[0-9]*'<<<"$lib_src_name")"
-                                                                                dst_webkit_lib_dir="$(dirname "$lib_dst_pth")/$webkit"
-                                                                                hook_msg "hack webkitgtk to be portable..."
-                                                                                sed -i 's|/usr|././|g' "$lib_dst_pth"
-                                                                                for sys_webkit_lib_dir in "${lib_src_dirname_pth}/$webkit" \
-                                                                                    "${lib_src_dirname_pth}exec/$webkit"
-                                                                                    do
-                                                                                        if [ -d "$sys_webkit_lib_dir" ] && \
-                                                                                            [[ ! -d "$dst_webkit_lib_dir/injected-bundle" || \
-                                                                                                ! -f "$dst_webkit_lib_dir/WebKitWebProcess" ]]
-                                                                                            then try_cp -T "$sys_webkit_lib_dir" "$dst_webkit_lib_dir"
-                                                                                        fi
-                                                                                done
-                                                                                for bin_to_wrap in "$dst_webkit_lib_dir"/*
-                                                                                    do
-                                                                                        if [[ -f "$bin_to_wrap" && ! -L "$bin_to_wrap" ]] && \
-                                                                                            ! grep -q '.*\.so.*'<<<"$bin_to_wrap"
-                                                                                            then
-                                                                                                try_mkdir "$bin_dir_pth"
-                                                                                                try_mv "$bin_to_wrap" "$bin_dir_pth"
-                                                                                                ln $varg "$dst_dir/sharun" "$dst_webkit_lib_dir/$(basename "$bin_to_wrap")"
-                                                                                        fi
-                                                                                done
-                                                                                if [ "$(basename "$lib_src_dirname_pth")" != "$lib_dir" ]
-                                                                                    then try_ln . "$dst_dir_pth/$lib_dir/$(basename "$lib_src_dirname_pth")"
-                                                                                fi
-                                                                                if ! grep -q 'SHARUN_WORKING_DIR=${SHARUN_DIR}' "$dst_dir/.env" 2>/dev/null
-                                                                                    then echo 'SHARUN_WORKING_DIR=${SHARUN_DIR}' >> "$dst_dir/.env"
-                                                                                fi ;;
-                                                                            */libwebkit*gtkinjectedbundle.so)
-                                                                                sed -i 's|/usr|././|g' "$lib_dst_pth" ;;
-                                                                            */libncursesw.so*|*/libcursesw.so*|*/libcurses.so*)
-                                                                                dst_terminfo_dir="$dst_dir/share/terminfo"
-                                                                                for terminfo_dir in '/etc' '/usr/share'
-                                                                                    do
-                                                                                        sys_terminfo_dir="$terminfo_dir/terminfo"
-                                                                                        if [[ -d "$sys_terminfo_dir" && ! -d "$dst_terminfo_dir" ]]
-                                                                                            then
-                                                                                                hook_msg "copy terminfo..."
-                                                                                                try_mkdir "$dst_terminfo_dir"
-                                                                                                try_cp -T "$sys_terminfo_dir" "$dst_terminfo_dir"
-                                                                                                break
-                                                                                        fi
-                                                                                done
-                                                                                sys_tabset_dir='/usr/share/tabset'
-                                                                                dst_tabset_dir="$dst_dir/share/tabset"
-                                                                                if [[ -d "$sys_tabset_dir" && ! -d "$dst_tabset_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy tabset..."
-                                                                                        try_mkdir "$dst_tabset_dir"
-                                                                                        try_cp -T "$sys_tabset_dir" "$dst_tabset_dir"
-                                                                                fi ;;
-                                                                            */qt*/plugins/*.so)
-                                                                                qt_conf="$sharun_bin_dir_pth/qt.conf"
-                                                                                if [ ! -f "$qt_conf" ]
-                                                                                    then
-                                                                                        hook_msg "create qt.conf..."
-                                                                                        qt="$(grep -Eo 'qt([0-9])?'<<<"$lib_src_pth")"
-                                                                                        echo -e \
-                                                                                        "[Paths]\nPrefix = ../shared/${lib_dir}/${qt}\nPlugins = plugins\nImports = qml\nQml2Imports = qml" \
-                                                                                        > "$qt_conf"
-                                                                                fi ;;
-                                                                            */libmagic.so*)
-                                                                                dst_magic_file="$dst_dir/share/file/misc/magic.mgc"
-                                                                                for magic_file_dir in 'file' 'file/misc' 'misc'
-                                                                                    do
-                                                                                        sys_magic_file="$(readlink -f "/usr/share/$magic_file_dir/magic.mgc")"
-                                                                                        if [[ -f "$sys_magic_file" && ! -f "$dst_magic_file" ]]
-                                                                                            then
-                                                                                                hook_msg "copy magic file..."
-                                                                                                try_mkdir "$(dirname "$dst_magic_file")"
-                                                                                                try_cp "$sys_magic_file" "$dst_magic_file"
-                                                                                                break
-                                                                                        fi
-                                                                                done ;;
-                                                                            */libgirepository-*.so*)
-                                                                                girepository="$(grep -o 'girepository-.*\.so'<<<"$lib_src_name"|sed "s|\.so$||")"
-                                                                                sys_girepository="${lib_src_dirname_pth}/$girepository"
-                                                                                dst_girepository="$lib_dst_dir_pth/$girepository"
-                                                                                if [[ -d "$sys_girepository" && ! -d "$dst_girepository" ]]
-                                                                                    then
-                                                                                        hook_msg "copy girepository..."
-                                                                                        try_mkdir "$dst_girepository"
-                                                                                        try_cp -T "$sys_girepository" "$dst_girepository"
-                                                                                        find "$lib_src_dirname_pth" -type f -wholename "*/$girepository/*.typelib" 2>/dev/null|\
-                                                                                        grep -v "^$sys_girepository"|while IFS=$'\n' read -r sys_typelib
-                                                                                            do
-                                                                                                dst_typelib="$dst_girepository/$(basename "$sys_typelib")"
-                                                                                                if [[ -f "$sys_typelib" && ! -f "$dst_typelib" ]]
-                                                                                                    then try_cp "$sys_typelib" "$dst_typelib"
-                                                                                                fi
-                                                                                        done
-                                                                                fi ;;
-                                                                            */gconv/*.so)
-                                                                                sys_gconv_modules_file="$(dirname "$lib_src_pth")/gconv-modules"
-                                                                                dst_gconv_modules_file="$(dirname "$lib_dst_pth")/gconv-modules"
-                                                                                if [[ -f "$sys_gconv_modules_file" &&  ! -f "$dst_gconv_modules_file" ]]
-                                                                                    then
-                                                                                        hook_msg "copy gconv-modules file..."
-                                                                                        try_cp "$sys_gconv_modules_file" "$dst_gconv_modules_file"
-                                                                                fi ;;
-                                                                            */libc*.so*)
-                                                                                sys_c_locale_dir="$(dirname "$lib_src_pth")/locale/C.utf8"
-                                                                                dst_c_locale_dir="$(dirname "$lib_dst_pth")/locale/C.utf8"
-                                                                                if [[ -d "$sys_c_locale_dir" &&  ! -d "$dst_c_locale_dir" ]]
-                                                                                    then
-                                                                                        hook_msg "copy glibc C.utf8 locale"
-                                                                                        try_mkdir "$dst_c_locale_dir"
-                                                                                        try_cp -T "$sys_c_locale_dir" "$dst_c_locale_dir"
-                                                                                fi
-                                                                                dst_en_locale_dir="$(dirname "$lib_dst_pth")/locale/en_US.utf8"
-                                                                                tmp_en_locale_dir="/tmp/lib/locale/en_US.utf8"
-                                                                                if [[ ! -d "$dst_en_locale_dir" ]] && is_exe_exist localedef; then
-                                                                                    mkdir -p "$tmp_en_locale_dir"
-                                                                                    cp "$(which_exe localedef)" /tmp/localedef
-                                                                                    sed -i 's|/usr/lib/locale|/tmp/lib/locale|g' /tmp/localedef
-                                                                                    if /tmp/localedef --no-archive -i en_US -f UTF-8 en_US.UTF-8; then
-                                                                                        hook_msg "copy glibc en_US.utf8 locale"
-                                                                                        try_mkdir "$dst_en_locale_dir"
-                                                                                        try_cp -T "$tmp_en_locale_dir" "$dst_en_locale_dir"
-                                                                                    fi
-                                                                                fi;;
-                                                                        esac
-                                                                fi
                                                                 LIBRARIES["$lib_dst_pth"]=1
                                                         fi
                                                     else
@@ -1232,29 +677,11 @@ if [[  ! -d "$WRAPPE_DIR" || "$WITH_PYTHON" == 1 ]]
                                 if [ -n "$INTERPRETER" ]
                                     then
                                         interpreter_pth="${dst_dir}/shared/$lib_dir/$INTERPRETER"
-                                        if [[ "$patch_interpreter" == 1 && "${LIBRARIES["${INTERPRETER}_patched"]}" != 1 ]]
+                                        if [[ "${LIBRARIES["${INTERPRETER}_patched"]}" != 1 ]]
                                             then
-                                                if [ "$LIBS_ONLY" != 1 ] && ! is_so
-                                                    then
-                                                        (try_cd "$bin_dir_pth"
-                                                        if [ -f "../$lib_dir/$INTERPRETER" ]
-                                                            then
-                                                                if [ -n "$IS_PYINSTELF" ]
-                                                                    then new_interp="$(printf "%${MAX_INTERP_LEN}s"|tr ' ' "i")"
-                                                                    else new_interp="../$lib_dir/$INTERPRETER"
-                                                                fi
-                                                                info_msg "$YELLOW[ SET INTERPRETER ]: $BLUE[$bin_dir_pth/$binary_name]"
-                                                                patchelf $pvarg --set-interpreter "$new_interp" "$binary_name"||exit 1
-                                                        fi)||exit 1
-                                                fi
                                                 info_msg "$YELLOW[ PATCH INTERPRETER ]: $BLUE[$interpreter_pth]"
                                                 sed -i 's|/usr|/XXX|g;s|/lib|/XXX|g;s|/etc|/XXX|g' "$interpreter_pth"||exit 1
                                                 LIBRARIES["${INTERPRETER}_patched"]=1
-                                        elif [[ "${LIBRARIES["${INTERPRETER}_sedpreload"]}" != 1 ]]
-                                            then
-                                                info_msg "$YELLOW[ REMOVE INTERPRETER PRELOAD ]: $BLUE[$interpreter_pth]"
-                                                sed -i 's|/etc/ld.so.preload|/XXX/ld.so.preload|g' "$interpreter_pth"||exit 1
-                                                LIBRARIES["${INTERPRETER}_sedpreload"]=1
                                         fi
                                 fi
                                 info_msg "[ DONE ]"
@@ -1311,7 +738,7 @@ fi
 for dst_dir in "${!DST_DIRS[@]}"
     do
         unset binpatched
-        if [[ "$GEN_LIB_PATH" == 1 || "$PATCH_RPATH" == 1 || -n "$(echo "${!PATCH_RPATH_@}")" ]]
+        if [[ "$GEN_LIB_PATH" == 1 || "$PATCH_RPATH" == 1 ]]
             then
                 for lib_dir in lib lib32
                     do
@@ -1327,7 +754,7 @@ for dst_dir in "${!DST_DIRS[@]}"
                                                 sed "s|${lib_dir}|+|g"<<<"$(xargs -I {} dirname "{}"<<<"$LIBS"|\
                                                     sort -u)"|grep -v '+/lib-dynload' > "${lib_dir}/lib.path"||exit 1
                                         fi
-                                        if [[ "$PATCH_RPATH" == 1 || "$(printenv PATCH_RPATH_$(get_md5sum "$dst_dir"))" == 1 ]]
+                                        if [[ "$PATCH_RPATH" == 1 ]]
                                             then
                                                 patch_files="$LIBS"
                                                 if [ "$binpatched" != 1 ]
