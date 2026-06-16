@@ -293,6 +293,18 @@ fn read_dotenv(dotenv_dir: &str) -> Vec<String> {
     unset_envs
 }
 
+fn read_preload(sharun_dir: &str) -> Vec<String> {
+    let preload_path = PathBuf::from(format!("{sharun_dir}/.preload"));
+    if !preload_path.exists() {
+        return vec![];
+    }
+    let data = read_to_string(&preload_path).unwrap_or_else(|err|{
+        eprintln!("Failed to read .preload file: {}: {err}", preload_path.display());
+        exit(1)
+    });
+    data.trim().split("\n").map(|s| s.trim().into()).filter(|s: &String| !s.is_empty()).collect()
+}
+
 fn add_to_xdg_data_env(xdg_data_dirs: &str, env: &str, path: &str) {
     for xdg_data_dir in xdg_data_dirs.rsplit(":") {
         let env_data_dir = Path::new(xdg_data_dir).join(path);
@@ -1130,22 +1142,12 @@ fn main() {
             interpreter_args.push(CString::new(arg0_path.to_str().unwrap_or_default()).unwrap_or_default())
         }
 
-        let preload_path = PathBuf::from(format!("{sharun_dir}/.preload"));
-        if preload_path.exists() {
-            let data = read_to_string(&preload_path).unwrap_or_else(|err|{
-                eprintln!("Failed to read .preload file: {}: {err}", preload_path.display());
-                exit(1)
-            });
-            let mut preload: Vec<String> = vec![];
-            for string in data.trim().split("\n") {
-                preload.push(string.trim().into());
-            }
-            if !preload.is_empty() {
-                interpreter_args.append(&mut vec![
-                    CString::new("--preload").unwrap_or_default(),
-                    CString::new(preload.join(" ")).unwrap_or_default()
-                ])
-            }
+        let preload = read_preload(&sharun_dir);
+        if !preload.is_empty() {
+            interpreter_args.append(&mut vec![
+                CString::new("--preload").unwrap_or_default(),
+                CString::new(preload.join(" ")).unwrap_or_default()
+            ])
         }
 
         interpreter_args.push(CString::new(&*bin).unwrap_or_default());
@@ -1164,6 +1166,17 @@ fn main() {
                 .exec()
         } else {
             drop(elf_bytes);
+            let temp_ld = "/tmp/.ld-sharun.so.67";
+            std::fs::copy(&interpreter, &temp_ld).unwrap_or_else(|err|{
+                eprintln!("pyinstaller/bun: Failed to copy interpreter to {temp_ld}: {err}");
+                exit(1)
+            });
+            let _ = std::fs::set_permissions(&temp_ld, std::fs::Permissions::from_mode(0o777));
+            env::set_var("LD_LIBRARY_PATH", &library_path);
+            let preload = read_preload(&sharun_dir);
+            if !preload.is_empty() {
+                env::set_var("LD_PRELOAD", preload.join(" "));
+            }
             Command::new(&bin)
                 .args(exec_args)
                 .exec()
