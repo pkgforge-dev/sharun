@@ -733,6 +733,14 @@ fn main() {
         }
     }
 
+    let python_bin = PathBuf::from(&bin_dir).join("python");
+    let python3_bin = PathBuf::from(&bin_dir).join("python3");
+    if is_exe(&python_bin) || is_exe(&python3_bin) {
+        if get_env_var("PYTHONNOUSERSITE").is_empty() {
+            env::set_var("PYTHONNOUSERSITE", "1");
+        }
+    }
+
     let lib_path_file = &format!("{library_path}/lib.path");
     if !Path::new(lib_path_file).exists() && is_writable(&library_path) {
         gen_library_path(&library_path, lib_path_file)
