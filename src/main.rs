@@ -891,6 +891,15 @@ fn main() {
                         }
                     }
                 }
+                if dir == "ladspa" {
+                    env::set_var("LADSPA_PATH", dir_path)
+                }
+                if dir.starts_with("frei0r-") {
+                    env::set_var("FREI0R_PATH", dir_path)
+                }
+                if dir.starts_with("mlt-") {
+                    env::set_var("MLT_REPOSITORY", dir_path)
+                }
             }
         }
 
@@ -1015,6 +1024,39 @@ fn main() {
                                     env::set_var("MAGIC", magic_file)
                                 }
                             }
+                            "ghostscript" => {
+                                let mut gs_base: Option<PathBuf> = None;
+                                if let Ok(gs_dir) = entry_path.read_dir() {
+                                    for gs_entry in gs_dir.flatten() {
+                                        let gs_init = gs_entry.path().join("Resource").join("Init");
+                                        if gs_init.is_dir() {
+                                            gs_base = Some(gs_entry.path().join("Resource"));
+                                            break
+                                        }
+                                    }
+                                }
+                                if gs_base.is_none() {
+                                    let gs_unversioned = entry_path.join("Resource").join("Init");
+                                    if gs_unversioned.is_dir() {
+                                        gs_base = Some(entry_path.join("Resource"))
+                                    }
+                                }
+                                if let Some(base) = gs_base {
+                                    env::set_var("GS_LIB", format!("{}:{}",
+                                        base.join("Init").to_string_lossy(),
+                                        base.to_string_lossy()))
+                                }
+                            }
+                            mlt if mlt.starts_with("mlt-") => {
+                                let profiles = entry_path.join("profiles");
+                                let presets = entry_path.join("presets");
+                                if profiles.exists() {
+                                    env::set_var("MLT_PROFILES_PATH", profiles)
+                                }
+                                if presets.exists() {
+                                    env::set_var("MLT_PRESETS_PATH", presets)
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -1034,6 +1076,12 @@ fn main() {
                                 let fonts_conf = entry_path.join("fonts.conf");
                                 if !Path::new("/etc/fonts/fonts.conf").exists() && fonts_conf.exists() {
                                     env::set_var("FONTCONFIG_FILE", fonts_conf)
+                                }
+                            }
+                            "ssl" => {
+                                let openssl_conf = entry_path.join("openssl.cnf");
+                                if openssl_conf.exists() {
+                                    env::set_var("OPENSSL_CONF", openssl_conf)
                                 }
                             }
                             _ => {}
