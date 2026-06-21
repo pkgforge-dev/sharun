@@ -419,8 +419,8 @@ fn main() {
     let bin_dir = &format!("{sharun_dir}/bin");
     let shared_dir = &format!("{sharun_dir}/shared");
     let shared_bin = &format!("{shared_dir}/bin");
-    let shared_lib = format!("{shared_dir}/lib");
-    let shared_lib32 = format!("{shared_dir}/lib32");
+    let lib = format!("{sharun_dir}/lib");
+    let lib32 = format!("{sharun_dir}/lib32");
 
     let arg0 = PathBuf::from(exec_args.remove(0));
     let arg0_name = arg0.file_name().unwrap_or_default().to_str().unwrap_or_default();
@@ -463,7 +463,7 @@ fn main() {
                     return
                 }
                 "-g" | "--gen-lib-path" => {
-                    for library_path in [shared_lib, shared_lib32] {
+                    for library_path in [lib, lib32] {
                         if Path::new(&library_path).exists() {
                             let lib_path_file = &format!("{library_path}/lib.path");
                             gen_library_path(&library_path, lib_path_file)
@@ -623,9 +623,9 @@ fn main() {
     });
 
     let mut library_path = if is_elf32_bin {
-        shared_lib32
+        lib32
     } else {
-        shared_lib
+        lib
     };
 
     let unset_envs = read_dotenv(&sharun_dir);
