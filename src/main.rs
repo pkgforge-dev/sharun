@@ -455,7 +455,7 @@ fn main() {
         if !exec_args.is_empty() {
             match exec_args[0].as_str() {
                 "-v" | "--version" => {
-                    println!("v{}", env!("CARGO_PKG_VERSION"));
+                    println!("Anylinux-sharun {}", env!("CARGO_PKG_VERSION"));
                     return
                 }
                 "-h" | "--help" => {

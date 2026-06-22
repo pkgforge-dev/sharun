@@ -1,11 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches:
-    - main
-    paths-ignore:
-    - '**/*.md'
   workflow_dispatch:
 
 jobs:
@@ -16,7 +11,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup toolchain
         uses: actions-rs/toolchain@v1
@@ -50,9 +45,26 @@ jobs:
           sudo mv -fv sstrip /usr/bin/)
           sstrip sharun-*
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - name: Get version
+        run: |
+          cp sharun-x86_64 sharun
+          chmod +x ./sharun
+          echo "VERSION=$(./sharun --version | awk '{print $NF}')" >> "${GITHUB_ENV}"
+
+      - name: Check tag doesn't exist
+        run: |
+          if git ls-remote --tags origin "refs/tags/$VERSION" | grep -q "$VERSION"; then
+            echo "Error: tag $VERSION already exists. Bump the version in Cargo.toml first."
+            exit 1
+          fi
+
+      - name: Draft Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: "continuous"
-          tag_name: "continuous"
+          name: "${{ env.VERSION }}"
+          tag_name: "${{ env.VERSION }}"
+          prerelease: false
+          draft: true
+          generate_release_notes: true
+          make_latest: true
           files: sharun-*
