@@ -272,16 +272,30 @@ pub fn read_dotenv(dotenv_dir: &str) -> Vec<String> {
 	let mut unset_envs = Vec::new();
 	let dotenv_path = PathBuf::from(format!("{dotenv_dir}/.env"));
 	if dotenv_path.exists() {
-		dotenv::from_path(&dotenv_path).ok();
 		let data = read_to_string(&dotenv_path).unwrap_or_else(|err|{
 			eprintln!("Failed to read .env file: {}: {err}", dotenv_path.display());
 			exit(1)
 		});
-		for string in data.trim().split("\n") {
-			let string = string.trim();
-			if string.starts_with("unset ") {
-				for var_name in string.split_whitespace().skip(1) {
+		for line in data.lines() {
+			let line = line.trim();
+			if line.is_empty() || line.starts_with('#') {
+				continue
+			}
+			if line.starts_with("unset ") {
+				for var_name in line.split_whitespace().skip(1) {
 					unset_envs.push(var_name.into());
+				}
+				continue
+			}
+			let line = line.strip_prefix("export ").unwrap_or(line);
+			if let Some((key, val)) = line.split_once('=') {
+				let key = key.trim();
+				let val = val.trim();
+				let val = val.strip_prefix('"').and_then(|v| v.strip_suffix('"'))
+					.or_else(|| val.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+					.unwrap_or(val);
+				if !key.is_empty() {
+					env::set_var(key, val);
 				}
 			}
 		}
