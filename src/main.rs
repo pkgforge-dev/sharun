@@ -10,6 +10,7 @@ use std::{
 mod utils;
 mod apprun;
 mod gio_launch_desktop;
+mod bwrap_wrapper;
 mod set_appdir_env;
 use utils::*;
 
@@ -295,6 +296,17 @@ fn main() {
 			eprintln!("{}={}", key.to_string_lossy(), value.to_string_lossy())
 		}
 	}
+
+	let _bwrap_keep_fd: Option<std::ffi::c_int> = if bin_name == "bwrap" {
+		let path_val = get_env_var("PATH");
+		let (new_args, keep_fd) = bwrap_wrapper::process_bwrap_args(
+			exec_args, &sharun_dir, &sharun_dir, &path_val
+		);
+		exec_args = new_args;
+		keep_fd
+	} else {
+		None
+	};
 
 	let is_pyinstaller_elf = is_elf_section(&elf_bytes, "pydata").unwrap_or(false);
 	let is_pyinstaller_dir = Path::new(&shared_bin).join("_internal").exists();
