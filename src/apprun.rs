@@ -36,6 +36,13 @@ pub fn run_as_apprun(
 	env::set_var("HOST_XDG_CACHE_HOME", env_or(&["REAL_XDG_CACHE_HOME", "XDG_CACHE_HOME"], &format!("{host_home}/.cache")));
 	env::set_var("HOST_XDG_STATE_HOME", env_or(&["REAL_XDG_STATE_HOME", "XDG_STATE_HOME"], &format!("{host_home}/.local/state")));
 
+	env::set_var("APPIMAGE_ARCH", std::env::consts::ARCH);
+	env::set_var("APPIMAGE_UID", unsafe { getuid() }.to_string());
+	env::set_var("HOSTPATH", get_env_var("PATH"));
+	add_to_env("PATH", bin_dir);
+	env::set_var("APPDIR", sharun_dir);
+	env::set_var("SHARUN_DIR", sharun_dir);
+
 	let apprun_wrapped = Path::new(sharun_dir).join("AppRun.sh");
 	if apprun_wrapped.exists() {
 		let shell = find_shell().unwrap_or_else(|| {
@@ -83,14 +90,6 @@ pub fn run_as_apprun(
 		exit(1)
 	}
 	let app = &format!("{bin_dir}/{appname}");
-
-	env::set_var("APPIMAGE_ARCH", std::env::consts::ARCH);
-	env::set_var("APPIMAGE_UID", unsafe { getuid() }.to_string());
-	env::set_var("HOSTPATH", get_env_var("PATH"));
-	add_to_env("PATH", bin_dir);
-	if get_env_var("APPDIR").is_empty() {
-		env::set_var("APPDIR", sharun_dir)
-	}
 
 	let err = Command::new(app)
 		.args(exec_args)
