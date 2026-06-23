@@ -308,6 +308,23 @@ fn main() {
 		None
 	};
 
+	if bin_name == "bwrap" && !Path::new(&format!("{shared_bin}/bwrap")).exists() {
+		let hostpath = get_env_var("HOSTPATH");
+		let search_path = if !hostpath.is_empty() { hostpath } else { get_env_var("PATH") };
+		match bwrap_wrapper::find_system_bwrap(&search_path, &sharun) {
+			Some(bwrap_path) => {
+				eprintln!("bwrap-wrapper: shared/bin/bwrap not found, using system bwrap: {bwrap_path}");
+				let err = Command::new(&bwrap_path).args(&exec_args).exec();
+				eprintln!("bwrap-wrapper: failed to exec system bwrap '{bwrap_path}': {err}");
+				exit(1);
+			}
+			None => {
+				eprintln!("bwrap-wrapper: bwrap not found in shared/bin or system PATH");
+				exit(1);
+			}
+		}
+	}
+
 	let is_pyinstaller_elf = is_elf_section(&elf_bytes, "pydata").unwrap_or(false);
 	let is_pyinstaller_dir = Path::new(&shared_bin).join("_internal").exists();
 	let is_bun_elf = is_elf_section(&elf_bytes, ".bun").unwrap_or(false);

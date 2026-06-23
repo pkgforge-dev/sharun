@@ -22,6 +22,7 @@
 // and plain argv.
 
 use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
+use std::path::Path;
 
 use nix::unistd::{access, pipe, AccessFlags};
 
@@ -284,4 +285,19 @@ pub fn process_bwrap_args(
 	}
 
 	(process_args_direct(&exec_args, &injections, appdir), None)
+}
+
+pub fn find_system_bwrap(search_path: &str, sharun: &Path) -> Option<String> {
+	for dir in search_path.split(':') {
+		if dir.is_empty() {
+			continue;
+		}
+		let candidate = format!("{dir}/bwrap");
+		let candidate_path = Path::new(&candidate);
+		if crate::utils::is_exe(candidate_path) &&
+			!crate::utils::is_hardlink(sharun, candidate_path) {
+			return Some(candidate);
+		}
+	}
+	None
 }
