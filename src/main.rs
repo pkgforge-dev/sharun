@@ -264,7 +264,7 @@ fn main() {
 		(None, None)
 	};
 
-	let mut lib_path_data = set_appdir_env::setup(bin_dir, &library_path, &sharun_dir, mesa_share.as_deref());
+	let mut lib_path_data = set_appdir_env::setup(bin_dir, &library_path, &sharun_dir, mesa_share.as_deref(), mesa_lib.as_deref());
 
 	if !lib_path_data.is_empty() {
 		lib_path_data = lib_path_data.trim().into();

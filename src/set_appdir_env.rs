@@ -13,11 +13,28 @@ pub fn setup(
 	library_path: &str,
 	sharun_dir: &str,
 	mesa_share: Option<&str>,
+	mesa_lib: Option<&str>,
 ) -> String {
 	let lib_path_data = set_lib_env(bin_dir, library_path, sharun_dir);
+	set_mesa_lib_env(mesa_lib);
 	set_share_env(sharun_dir, mesa_share);
 	set_etc_env(sharun_dir);
 	lib_path_data
+}
+
+// When an external mesa install is in use, point the lib-derived graphics driver
+// paths (dir/gbm/vaapi) at it instead. Runs only when SHARUN_MESA_PATH is set
+fn set_mesa_lib_env(mesa_lib: Option<&str>) {
+	let mesa_lib = match mesa_lib { Some(m) => m, None => return };
+	let mesa_dri = format!("{mesa_lib}/dri");
+	if Path::new(&mesa_dri).is_dir() {
+		env::set_var("LIBGL_DRIVERS_PATH", &mesa_dri);
+		add_to_env("LIBVA_DRIVERS_PATH", &mesa_dri);
+	}
+	let mesa_gbm = format!("{mesa_lib}/gbm");
+	if Path::new(&mesa_gbm).is_dir() {
+		add_to_env("GBM_BACKENDS_PATH", &mesa_gbm);
+	}
 }
 
 fn set_lib_env(
