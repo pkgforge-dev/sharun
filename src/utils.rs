@@ -268,6 +268,34 @@ pub fn add_to_env<K: AsRef<OsStr>, V: AsRef<OsStr>>(key: K, val: V) {
 	}
 }
 
+pub fn expand_vars(val: &str) -> String {
+	let mut out = String::new();
+	let mut rest = val;
+	while let Some(start) = rest.find('$') {
+		out.push_str(&rest[..start]);
+		rest = &rest[start + 1..];
+		if let Some(stripped) = rest.strip_prefix('{') {
+			if let Some(end) = stripped.find('}') {
+				let name = &stripped[..end];
+				out.push_str(&env::var(name).unwrap_or_else(|_| format!("${{{name}}}")));
+				rest = &stripped[end + 1..];
+				continue
+			}
+		} else {
+			let end = rest.find(|c: char| !c.is_ascii_alphanumeric() && c != '_').unwrap_or(rest.len());
+			if end > 0 {
+				let name = &rest[..end];
+				out.push_str(&env::var(name).unwrap_or_else(|_| format!("${name}")));
+				rest = &rest[end..];
+				continue
+			}
+		}
+		out.push('$');
+	}
+	out.push_str(rest);
+	out
+}
+
 pub fn read_dotenv(dotenv_dir: &str) -> Vec<String> {
 	let mut unset_envs = Vec::new();
 	let dotenv_path = PathBuf::from(format!("{dotenv_dir}/.env"));
@@ -291,11 +319,16 @@ pub fn read_dotenv(dotenv_dir: &str) -> Vec<String> {
 			if let Some((key, val)) = line.split_once('=') {
 				let key = key.trim();
 				let val = val.trim();
-				let val = val.strip_prefix('"').and_then(|v| v.strip_suffix('"'))
-					.or_else(|| val.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
-					.unwrap_or(val);
+				let (val, expand) = if let Some(v) = val.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
+					(v.to_string(), false)
+				} else if let Some(v) = val.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+					(v.to_string(), true)
+				} else {
+					(val.to_string(), true)
+				};
+				let val = if expand { expand_vars(&val) } else { val };
 				if !key.is_empty() {
-					env::set_var(key, val);
+					env::set_var(key, &val);
 				}
 			}
 		}
